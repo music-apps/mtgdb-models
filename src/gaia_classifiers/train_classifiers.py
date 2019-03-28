@@ -84,11 +84,11 @@ def match_groudtruth(dataset_data_dir, filelist_file, groundtruth_input_file,
     if gt_not_in_ls_per > tolerance:
         max_allowed = int(gt_tracks * tolerance // 100)
         raise Exception('{} ({}%) files from the groundtruth are not listed in the data directory. '
-			'Maximun missing files allowed amount is {} ({}%).'.format(
-            gt_not_in_ls, gt_not_in_ls_per, max_allowed, tolerance))
+                        'Maximun missing files allowed amount is {} ({}%).'.format(
+                         gt_not_in_ls, gt_not_in_ls_per, max_allowed, tolerance))
 
 
-def train_models(data_dir, exp_dir, tolerance=5, force=False):
+def train_models(data_dir, exp_dir, tolerance=5, force=False, seed=None):
     for dataset, groundtruth_input_file in DATASETS_GROUNDTRUTH.items():
         try:
             dataset_data_dir = os.path.join(data_dir, dataset)
@@ -182,7 +182,8 @@ def train_models(data_dir, exp_dir, tolerance=5, force=False):
             log.close()
 
             train_model.trainModel(groundtruth_output_file, filelist_file,
-                                   project_file, dataset_exp_dir, results_model_file)
+                                   project_file, dataset_exp_dir,
+                                   results_model_file, seed)
         except:
             print('Exception occured processing {}'.format(dataset))
             traceback.print_exc()
@@ -199,8 +200,16 @@ if __name__ == '__main__':
                                 help='Allowed percentage of missing groundtruth files.')
     argumentParser.add_argument('--force', '-f', action='store_true',
                                 help='Recompute existing models.')
+    argumentParser.add_argument('--seed', '-s', type=float, default=1,
+                                help='seed used to generate the random folds.'
+                                'Use 0 to use computer time (will vary on each trial)')
 
     args = argumentParser.parse_args()
 
-    train_models(args.data_dir, args.exp_dir, tolerance=args.tolerance, force=args.force)
+    seed = args.seed
+    if args.seed == 0:
+        seed = None
 
+    args = argumentParser.parse_args()
+
+    train_models(args.data_dir, args.exp_dir, tolerance=args.tolerance, force=args.force, seed=seed)
