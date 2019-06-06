@@ -102,7 +102,8 @@ def train_models(data_dir, exp_dir, tolerance=5, force=False, seed=None):
             results_model_file = os.path.join(
                 dataset_exp_dir, "{}.history".format(dataset))
             log_file = os.path.join(dataset_exp_dir, "{}.log".format(dataset))
-            ranking_file = '{}.results.ranking'.format(results_model_file)
+            report_file = os.path.join(
+                dataset_exp_dir, "{}.report.csv".format(dataset))
 
             log_str = '\n\n{}\nProcessing "{}"\n{}\n\n'.format(
                 '*' * 30, dataset, '*' * 30)
@@ -122,13 +123,13 @@ def train_models(data_dir, exp_dir, tolerance=5, force=False, seed=None):
                     log_lines.append(log_str)
                     shutil.rmtree(dataset_exp_dir)
                 else:
-                    if os.path.exists(ranking_file):
-                        log_str = 'Ranking file exists. Nothing to be done for this dataset!'
+                    if os.path.exists(report_file):
+                        log_str = 'Report file exists. Nothing to be done for this dataset!'
                         print(log_str)
                         log_lines.append(log_str)
                         continue
                     else:
-                        log_str = 'Ranking file does not exit. Training will be resumed'
+                        log_str = 'Report file does not exit. Training will be resumed'
                         print(log_str)
                         log_lines.append(log_str)
             else:
