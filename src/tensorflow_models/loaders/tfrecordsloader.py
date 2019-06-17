@@ -1,32 +1,26 @@
-import os
-import glob
-import hashlib
+from sklearn.preprocessing import LabelBinarizer
 
-import numpy as np
-import tensorflow as tf
-
-tf.logging.set_verbosity(tf.logging.ERROR)
+from . import *
 
 
-class BaseLoader():
+class TFRecordLoaderSingleLabel(BaseLoader):
 
     # context structure for the tfrecord messages 
     tf_context = {
-        'hash': tf.FixedLenFeature([], dtype=tf.string),
-        'chunk_id': tf.FixedLenFeature([], dtype=tf.string),
+        'shape': tf.FixedLenFeature(2, dtype=tf.int64),
+        'label_tag': tf.FixedLenFeature([], dtype=tf.string),
+        'label_ohe': tf.FixedLenFeature([],  dtype=tf.int64),
+        'id': tf.FixedLenFeature([], dtype=tf.string),
         }
 
     # features structure for the tfrecord messages 
     tf_features = {
-        'arrays': tf.VarLenFeature(dtype=tf.float32),
-        'shapes': tf.VarLenFeature(dtype=tf.int64),
-        'labels': tf.VarLenFeature(dtype=tf.string),
-        'ids': tf.VarLenFeature(dtype=tf.string),
+        'data': tf.VarLenFeature(dtype=tf.float32),
         }
 
 
     def __init__(self, filelist, groundtruth, output_folder,
-                 label, chunk_size=300., force=False, session=None):
+                 label='train', chunk_size=300., force=False, session=None):
         self.filelist = filelist
         self.groundtruth = groundtruth
         self.output_folder = output_folder
@@ -84,7 +78,7 @@ class BaseLoader():
         paths = [i['path'] for i in self.data_info.values()]
         paths.sort()
 
-        #print('Hash: ' + ''.join(paths))
+        print('Hash: ' + ''.join(paths))
         return self.get_hash(''.join(paths))
 
     @staticmethod
@@ -97,10 +91,7 @@ class BaseLoader():
         return file_dict
 
     @staticmethod
-    def dump_tfrecords(serialized, filename, force=False):
-        if os.path.exists(filename) and not force:
-            raise Exception('Loader: "{}" already exists'.format(filename))
-        
+    def dump_tfrecords(serialized, writer, filename):
         with tf.python_io.TFRecordWriter(filename) as writer:
                 writer.write(serialized.SerializeToString())
 
@@ -159,11 +150,15 @@ class BaseLoader():
         print('Loader: Groundtruth contains labels for {}/{} ids'.format(common_n,
                                                                          len(filelist_keys)))
 
+        labels = [l for k, l in groundtruth.items() if k in common_keys]
+        self.label_binarizer = LabelBinarizer()
+        self.label_binarizer.fit(labels)
+
         # ausume filelist contains relative paths to the .npys from filelist location
         base_path = os.path.dirname(self.filelist)
         self.data_info = {i: {'path': os.path.join(base_path, filelist[i]), 
-                              'label': groundtruth[i]} for i in common_keys}
-
+                              'label_tag': groundtruth[i],
+                              'label_ohe': self.label_binarizer.transform([groundtruth[i]])[0]} for i in common_keys}
 
     def get_tfrecords(self):
         os.chdir(self.output_folder)
@@ -201,19 +196,19 @@ class BaseLoader():
 
         print('found {} tfrecords chuncks'.format(len(tf_records_files)))
 
-        for f in tf_records_files:
-            c, _ = self.load_tfrecords(f)
-            chunk_hash = c['hash'].eval()
-            chunk_id = int(c['chunk_id'].eval())
+        #for f in tf_records_files:
+         #   c, _ = self.load_tfrecords(f)
+            # chunk_hash = c['hash'].eval()
+            # chunk_id = int(c['chunk_id'].eval())
 
-            assert(chunk_hash == path_hash), 'chunk number {} has an invalid hash: {}. Filelist hash: {}'.format(
-                chunk_id, chunk_hash, path_hash)
+            # assert(chunk_hash == path_hash), 'chunk number {} has an invalid hash: {}. Filelist hash: {}'.format(
+            #     chunk_id, chunk_hash, path_hash)
 
         print('Correct hash for all found chunks')
         return tf_records_files
 
 
-    def load_npy_instance(self, id, data, weight, ids):
+    def load_npy_instance(self, id):
         """This method defines the structure of the data inside
         the tfrecords files. It can be overrinded in a sibling
         class in order to modify the data shape without affecting
@@ -221,38 +216,23 @@ class BaseLoader():
         """
 
         path = self.data_info[id]['path']
-        label = self.data_info[id]['label']
-
-        #initialization
-        if not data:
-            data['arrays'], data['shapes'], data['labels'], data['ids'] = [], [], [], []
 
         # Try to load the matrix
         try:
-            array = np.load(path)
-            shape = np.array(array.shape)
+            return np.load(path)
         except Exception as e:
             print('Error importing "{}" (id: {}). {}'.format(
                 path, id, str(e)))
-            return
 
-        # update date
-        data['arrays'].append(self._dtype_feature(array))
-        data['shapes'].append(self._dtype_feature(shape))
-        data['labels'].append(self._dtype_feature(label))
-        data['ids'].append(self._dtype_feature(id))
 
-        # update payload size
-        weight += array.nbytes / 1e6 # store in megabytes
 
-        # update list of successfully processed ids
-        ids.append(id)
-
-    def generate_context(self, c_hash, chunk_id):
+    def generate_context(self, shape, label_tag, label_ohe, id):
         # TODO: Add info about features as the extractor, essentia version...
         context = {
-            'hash': self._dtype_feature(c_hash),
-            'chunk_id': self._dtype_feature(str(chunk_id))
+            'shape': self._dtype_feature(shape),
+            'label_tag': self._dtype_feature(str(label_tag)),
+            'label_ohe': self._dtype_feature(label_ohe),
+            'id': self._dtype_feature(str(id))
             }
 
         return context
@@ -270,28 +250,43 @@ class BaseLoader():
             sucessful_ids = []
             data = dict()
 
-            while((weight < self.chunk_size) and len(remaining_keys) > 0):
-                self.load_npy_instance(remaining_keys[0], data,
-                                       weight, sucessful_ids)
-                remaining_keys.pop(0)
-
-            # Context Features
-            context = self.generate_context(path_hash, chunk_id)
-            context = tf.train.Features(feature=context)
-            
-            # Sequential Features
-            features = {k: tf.train.FeatureList(feature=v) for k, v in data.items()}
-            features = tf.train.FeatureLists(feature_list=features)
-
-            serialized = tf.train.SequenceExample(context=context,
-                                                  feature_lists=features)
-
             # Write TFrecord
             writter_path = os.path.join(
                 self.output_folder, self.label + '.tfrecords.{}'.format(chunk_id))
 
-            self.dump_tfrecords(serialized, writter_path, force=self.force)
+            writer = tf.python_io.TFRecordWriter(writter_path)
+
+            while((weight < self.chunk_size) and len(remaining_keys) > 0):
+                id = remaining_keys[0]
+
+                label_tag = self.data_info[id]['label_tag']
+                label_ohe = self.data_info[id]['label_ohe']
+
+                data = self.load_npy_instance(remaining_keys[0])
+
+                # update payload size
+                weight += data.nbytes / 1e6 # store in megabytes
+
+                # Context Features
+                context = self.generate_context(np.array(data.shape), label_tag, label_ohe , id)
+                context = tf.train.Features(feature=context)
+
+                # Sequential Features
+                features = {'data': tf.train.FeatureList(feature=[self._dtype_feature(data)])}
+                features = tf.train.FeatureLists(feature_list=features)
+
+                serialized = tf.train.SequenceExample(context=context,
+                                                    feature_lists=features)
+
+                writer.write(serialized.SerializeToString())
+
+                # update list of successfully processed ids
+                sucessful_ids.append(id)
+                
+                remaining_keys.pop(0)
+
             print('Written {}/{}. Chunk {}.'.format(n_total -
                                                     len(remaining_keys), n_total, chunk_id))
 
+            writer.close()
             chunk_id += 1
