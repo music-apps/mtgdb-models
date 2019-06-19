@@ -1,30 +1,44 @@
+import sys
+sys.path.append("..")
+
 from abc import ABC
 import os
 import yaml
 
 import numpy as np
+import tensorflow as tf
 from sklearn.preprocessing import LabelBinarizer
 
+from loaders.singlelabel import YamlToTFRecordLoader
+from trainers import Trainer
 
-class BaseEvaluator(ABC):
+class BaseManager(ABC):
 
-    def __init__(self, config_file):
+    def __init__(self, config_file, session=None):
         try:
+            self.config_file = config_file
             self.config = yaml.load(open(config_file))
         except:
-            raise('BaseEvaluator: Not able to load configuration file')
+            raise('BaseManager: Not able to load configuration file')
 
         self.filelist = None
         self.groundtruth = None
 
         self.project_directory = self.config['project_directory']
         self.groundtruth_basefolder = self.config['groundtruth_basefolder']
+        self.datasets_directory = self.config['datasets_directory']
         self.validation_size = self.config['evaluator']['validation_size']
         self.stratify = self.config['evaluator']['stratify']
         self.test_strategy = self.config['evaluator']['test_strategy']
+
+        if not session:
+            self.session = tf.InteractiveSession()
+            self.owns_session = True
+        else:
+            self.session = session
+            self.owns_session = False
         
         self.parse()
-        self.generate_splits()
 
 
     @staticmethod
@@ -42,7 +56,7 @@ class BaseEvaluator(ABC):
         pass
 
 
-class Evaluator(BaseEvaluator):
+class Manager(BaseManager):
 
     def _parse_files(self):
         self.filelist = yaml.load(open(self.config['filelist']))
@@ -64,7 +78,7 @@ class Evaluator(BaseEvaluator):
                                                                          len(filelist_keys)))
 
         self.matched_groundtruth = {idx: self.groundtruth[key] for idx, key in zip(self._key_generator(common_n), common_keys)}
-        self.matched_filelist = {idx: os.path.join(self.groundtruth_basefolder, '.'.join(self.filelist[key].split('.')[:-1]) + '.npy') for idx, key in zip(self._key_generator(common_n), common_keys)}
+        self.matched_filelist = {idx: os.path.join(self.groundtruth_basefolder, self.filelist[key]) + '.npy' for idx, key in zip(self._key_generator(common_n), common_keys)}
 
 
     def generate_splits(self):
@@ -124,8 +138,55 @@ class Evaluator(BaseEvaluator):
             with open(filelist_filename, 'w') as f:
                 yaml.dump(filelist, f)
 
+        self.train_groundtruth_file = os.path.join(self.project_directory, 'train_groundtruth.yaml')
+        self.train_filelist_file = os.path.join(self.project_directory, 'train_filelist.yaml')
+        self.val_groundtruth_file = os.path.join(self.project_directory, 'val_groundtruth.yaml')
+        self.val_filelist_file = os.path.join(self.project_directory, 'val_filelist.yaml')
+        self.test_groundtruth_file = os.path.join(self.project_directory, 'test_groundtruth.yaml')
+        self.test_filelist_file = os.path.join(self.project_directory, 'test_filelist.yaml')
 
-class EvaluatorFromMTGDBMetadata(Evaluator):
+    def prepare_data(self):
+        self.generate_splits()
+
+        # Load data and labels listed in filelist and groundtruth
+        #and makes sure that the data is correctly stores in tfrecords files
+        self.train_loader = YamlToTFRecordLoader(self.train_filelist_file,
+                                                 self.train_groundtruth_file,
+                                                 self.datasets_directory,
+                                                 'train',
+                                                 self.config_file,
+                                                 self.label_binarizer,
+                                                 session=self.session)
+
+        self.val_loader = YamlToTFRecordLoader(self.val_filelist_file,
+                                               self.val_groundtruth_file,
+                                               self.datasets_directory,
+                                               'val',
+                                               self.config_file,
+                                               self.label_binarizer,
+                                               session=self.session)
+
+        self.test_loader = YamlToTFRecordLoader(self.test_filelist_file,
+                                                self.test_groundtruth_file,
+                                                self.datasets_directory,
+                                                'test',
+                                                self.config_file,
+                                                self.label_binarizer,
+                                                session=self.session)
+
+
+    def train(self, model, optimizer):
+
+        self.trainer = Trainer(model,
+                               self.train_loader, optimizer,
+                               self.config_file,
+                               val_loader=self.val_loader,
+                               session=self.session)
+
+        self.trainer.train()
+
+
+class MananagerMTGDBMetadata(Manager):
 
     def _parse_files(self):
         self.filelist = yaml.load(open(self.config['filelist']))

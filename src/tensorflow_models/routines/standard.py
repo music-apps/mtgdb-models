@@ -2,77 +2,49 @@
 import sys
 sys.path.append("..")
 
+import argparse
+
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import numpy as np
 
-from evaluators import EvaluatorFromMTGDBMetadata
+from managers import MananagerMTGDBMetadata
 from loaders.singlelabel import YamlToTFRecordLoader
 from optimizers.sgdclip import SGDClip
 from models.vggish import VGGish
 from trainers import Trainer
 
-def tensorflow_shutup():
-    """
-    Make Tensorflow less verbose
-    """
-    try:
-        # noinspection PyPackageRequirements
-        import os
-        from tensorflow import logging
-        logging.set_verbosity(logging.ERROR)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-        # Monkey patching deprecation utils to shut it up! Maybe good idea to disable this once after upgrade
-        # noinspection PyUnusedLocal
-        def deprecated(date, instructions, warn_once=True):
-            def deprecated_wrapper(func):
+def standard_routine(args):
+    config_file = args.config_file
 
-                return func
-            return deprecated_wrapper
+    session = tf.InteractiveSession()
+    # session = tf_debug.LocalCLIDebugWrapperSession(session)
 
-        from tensorflow.python.util import deprecation
-        deprecation.deprecated = deprecated
+    # a Manager should create Loaders and Trainers according to the config_file
+    manager = MananagerMTGDBMetadata(config_file, session=session)
 
-    except ImportError:
-        pass
+    # define architecture
+    model = VGGish(config_file)
 
-tensorflow_shutup()
+    # define optimizer
+    optimizer = SGDClip(model, config_file)
 
-session = tf.InteractiveSession()
-# session = tf_debug.LocalCLIDebugWrapperSession(session)
+    # data sanity checks and conversion into .tfrecords format
+    manager.prepare_data()
 
-config_file = '/home/pablo/exp/tf_example/genre_dortmund/vggish_dourtmouth.yaml'
-
-evaluator = EvaluatorFromMTGDBMetadata(config_file)
+    # train
+    manager.train(model, optimizer)
 
 
-# Load data and labels listed in filelist and groundtruth
-#and makes sure that the data is correctly stores in tfrecords files
-train_loader = YamlToTFRecordLoader('/home/pablo/exp/tf_example/genre_dortmund/train_filelist.yaml',
-                                    '/home/pablo/exp/tf_example/genre_dortmund/train_groundtruth.yaml',
-                                    '/home/pablo/exp/tf_example/genre_dortmund/data/',
-                                    'train',
-                                    config_file,
-                                    evaluator.label_binarizer,
-                                    session=session)
 
-val_loader = YamlToTFRecordLoader('/home/pablo/exp/tf_example/genre_dortmund/val_filelist.yaml',
-                                  '/home/pablo/exp/tf_example/genre_dortmund/val_groundtruth.yaml',
-                                  '/home/pablo/exp/tf_example/genre_dortmund/data/',
-                                  'val',
-                                  config_file,
-                                  evaluator.label_binarizer,
-                                  session=session)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description='Standard routine')
 
-# define architecture
-model = VGGish(config_file)
+    parser.add_argument('config_file')
 
-# define optimizer
-optimizer = SGDClip(model, config_file)
+    standard_routine(parser.parse_args())
 
-# define trainer
-trainer = Trainer(model,train_loader, optimizer, config_file, session=session, val_loader=val_loader)
-
-trainer.train()
+    # /home/pablo/exp/tf_example/genre_dortmund/vggish_dourtmouth.yaml
