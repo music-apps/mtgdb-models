@@ -252,15 +252,7 @@ class TsvToTFRecordLoader(BaseLoader):
         class in order to modify the data shape without affecting
         the .npy to .tfrecord logic.
         """
-
-        path = self.data_info[id]['path']
-
-        # Try to load the matrix
-        try:
-            return np.load(path)
-        except Exception as e:
-            print('Error importing "{}" (id: {}). {}'.format(
-                path, id, str(e)))
+        return np.load(self.data_info[id]['path'])
 
 
 
@@ -301,10 +293,14 @@ class TsvToTFRecordLoader(BaseLoader):
                 label_tag = self.data_info[id]['label_tag']
                 label_ohe = self.data_info[id]['label_ohe']
 
-                data = self.load_npy_instance(remaining_keys[0])
+                # Try to load the matrix
+                try:
+                    data = self.load_npy_instance(remaining_keys[0])
 
-                #print('label {}'.format(label_tag))
-                #print('size {}'.format(data.shape))
+                except Exception as e:
+                    print('Error importing "{}". {}'.format(
+                        remaining_keys[0], str(e)))
+                    continue
 
                 # update payload size
                 weight += data.nbytes / 1e6 # store in megabytes
