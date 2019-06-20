@@ -17,10 +17,8 @@ class BaseModel(ABC):
         except:
             raise('model: not able to load configuration file')
 
-        self.batch_size = self.config['trainer']['batch_size']
         self.num_frames = self.config['architecture']['num_frames']
         self.num_bands = self.config['architecture']['num_bands']
-        self.embedding_size = self.config['architecture']['embedding_size']
         self.num_classes = self.config['architecture']['num_classes']
         self.input_op_name = self.config['architecture']['input_op_name']
         self.output_op_name = self.config['architecture']['output_op_name']

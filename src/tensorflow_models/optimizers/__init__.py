@@ -20,10 +20,7 @@ class BaseOptimizer(ABC):
         except:
             raise('optimizer: not able to load configuration file')
 
-        self.init_stddev = self.config['optimizer']['init_stddev']
         self.learning_rate = self.config['optimizer']['learning_rate']
-        self.adam_epsilon = self.config['optimizer']['adam_epsilon']
-        
         self.num_classes = self.config['architecture']['num_classes']
 
         self.defiene_optimizer(model)

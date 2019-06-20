@@ -25,7 +25,7 @@ class BaseManager(ABC):
         self.groundtruth = None
 
         self.project_directory = self.config['project_directory']
-        self.groundtruth_basefolder = self.config['groundtruth_basefolder']
+        self.filelist_basefolder = self.config['filelist_basefolder']
         self.datasets_directory = self.config['datasets_directory']
         self.validation_size = self.config['evaluator']['validation_size']
         self.stratify = self.config['evaluator']['stratify']
@@ -78,7 +78,7 @@ class Manager(BaseManager):
                                                                          len(filelist_keys)))
 
         self.matched_groundtruth = {idx: self.groundtruth[key] for idx, key in zip(self._key_generator(common_n), common_keys)}
-        self.matched_filelist = {idx: os.path.join(self.groundtruth_basefolder, self.filelist[key]) + '.npy' for idx, key in zip(self._key_generator(common_n), common_keys)}
+        self.matched_filelist = {idx: os.path.join(self.filelist_basefolder, self.filelist[key]) + '.npy' for idx, key in zip(self._key_generator(common_n), common_keys)}
 
 
     def generate_splits(self):
