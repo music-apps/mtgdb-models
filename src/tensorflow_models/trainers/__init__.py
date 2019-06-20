@@ -4,6 +4,7 @@ from abc import ABC, abstractclassmethod
 import random
 import time
 import yaml
+import os 
 
 import numpy as np
 import tensorflow as tf
@@ -116,12 +117,6 @@ class Trainer(BaseTrainer):
         shape =  np.array([-1, self.num_bands])
         x_batch = [np.reshape(x, shape) for x in x_batch]
         
-        # from matplotlib import pyplot as plt
-        # a = x_batch[5]
-        # print(a.shape)
-        # plt.matshow(a.T, origin='lower')
-        # plt.show()
-        
         # Add singleton dimension for channel
         x_batch = np.expand_dims(x_batch, -1)
         
@@ -171,6 +166,7 @@ class Trainer(BaseTrainer):
 
             start_time = time.time()
             array_train_loss = []
+            array_train_acc = []
 
             idx_subset = 1
 
@@ -180,7 +176,7 @@ class Trainer(BaseTrainer):
             while True:
                 try:
                     for batch_num, train_batch in enumerate(self._get_batch_generator(self.train_next_element)):
-                        _, train_loss = sess.run([self.optimizer.train_step, self.optimizer.loss],
+                        _, _, train_loss, preds = sess.run([self.optimizer.train_step, self.optimizer.train_op, self.optimizer.loss, self.model.normalized_output],
                                                 feed_dict={self.model.input: train_batch['X'],
                                                             self.optimizer.y: train_batch['Y'],
                                                             self.model.is_training: True,
@@ -190,6 +186,11 @@ class Trainer(BaseTrainer):
 
                         array_train_loss.append(train_loss)
 
+                        preds_argmax = np.argmax(np.array(preds), axis=1)
+                        y_argmax = np.argmax(train_batch['Y'], axis=1)
+                        acc = accuracy_score(preds_argmax, y_argmax)
+                        array_train_acc.append(acc)
+
                 except tf.errors.OutOfRangeError:
                     break
 
@@ -198,6 +199,7 @@ class Trainer(BaseTrainer):
                 idx_subset += 1
 
             train_loss = np.mean(array_train_loss)
+            train_acc = np.mean(array_train_acc)
 
 
             print('validating...')
@@ -215,7 +217,7 @@ class Trainer(BaseTrainer):
                         val_loss = sess.run([self.optimizer.loss],
                                             feed_dict={self.model.input: val_batch['X'],
                                                        self.optimizer.y: val_batch['Y'],
-                                                       self.model.is_training: False})[0]
+                                                       self.model.is_training: False})
 
                         print('batch {} ({} chunks) done'.format(batch_num + 1, val_batch['X'].shape[0]))
                         print('val loss : {}'.format(val_loss))
@@ -237,11 +239,11 @@ class Trainer(BaseTrainer):
             val_loss = np.mean(array_val_loss)
             val_acc = np.mean(array_val_acc)
 
-            print('train_loss: {:.3f} val_loss: {:.3f} val_acc: {:.3f} lr: {:.5f} time_s: {:.3f}'.format(
-                train_loss, val_loss, val_acc, current_lr, epoch_time - start_time))
+            print('train_loss: {:.3f} train_acc: {:.3f} val_loss: {:.3f} val_acc: {:.3f} lr: {:.5f} time_s: {:.3f}'.format(
+                train_loss, train_acc, val_loss, val_acc, current_lr, epoch_time - start_time))
 
-            model_folder = './'
-            fy = open(model_folder + 'train_log.tsv', 'a')
+            results_dir = self.config['results_directory']
+            fy = open(os.path.join(results_dir, 'train_log.tsv'), 'a')
             fy.write('%d\t%g\t%g\t%g\t%gs\t%g\n' % (epoch_n + 1, train_loss, val_loss, val_acc, epoch_time, current_lr))
 
             
