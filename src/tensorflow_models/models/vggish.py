@@ -75,15 +75,7 @@ class VGGish(BaseModel):
                                 units=self.num_classes,
                                 kernel_initializer=kernel_initializer)
 
+            normalized_output = tf.sigmoid(output, name='prediction')
+
             self.output = output
-            self.normalized_output = tf.nn.softmax(output)
-
-
-    def train(self):
-        pass
-
-    def predict(self):
-        pass
-
-    def batch_prediction(self, sbatch_dispatcher, ids_test, tf_vars):
-        pass
+            self.normalized_output = normalized_output
