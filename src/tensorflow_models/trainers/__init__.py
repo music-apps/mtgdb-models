@@ -103,12 +103,14 @@ class Trainer(BaseTrainer):
         val_dataset = val_dataset.map(self._parse_single_sequence_example)  # Parse the record into tensors.
 
         # val_subset_size = np.min([self.subset_size, self.val_loader.num_tracks])
-        val_dataset = val_dataset.padded_batch(self.subset_size, padded_shapes=shapes)
+        # val_dataset = val_dataset.padded_batch(self.subset_size, padded_shapes=shapes)
+        val_dataset = val_dataset.padded_batch(1, padded_shapes=shapes)
+        # val_dataset = val_dataset.batch(1)
 
         self.val_iterator = val_dataset.make_initializable_iterator()
         self.val_next_element = self.val_iterator.get_next()
 
-    def _get_batch_generator(self, next_element):
+    def _get_batch_generator(self, next_element, mux_type='chain_mux'):
         x_batch, y_batch = self.session.run(next_element)
 
         batch_size = len(x_batch)
@@ -131,10 +133,17 @@ class Trainer(BaseTrainer):
         train_streams = [ps.Streamer(self._data_gen, x, y, self.num_frames,
                                      self.batch_hop_size, self.sampling_strategy) for x, y in zip(x_batch, y_batch)]
 
-        train_mux = ps.StochasticMux(train_streams,
-                                     n_active=len(train_streams),
-                                     rate=None,
-                                     mode='exhaustive')
+        if mux_type == 'stochastic':
+            train_mux = ps.StochasticMux(train_streams,
+                                        n_active=len(train_streams),
+                                        rate=None,
+                                        mode='exhaustive')
+
+        elif mux_type == 'chain_mux':
+            train_mux = ps.ChainMux(train_streams)
+        
+        else:
+            raise("Loader: Pescador mux type not implemented")
 
         return ps.Streamer(ps.buffer_stream,
                            train_mux,
@@ -176,11 +185,13 @@ class Trainer(BaseTrainer):
             while True:
                 try:
                     for batch_num, train_batch in enumerate(self._get_batch_generator(self.train_next_element)):
-                        _, _, train_loss, preds = sess.run([self.optimizer.train_step, self.optimizer.train_op, self.optimizer.loss, self.model.normalized_output],
-                                                feed_dict={self.model.input: train_batch['X'],
-                                                            self.optimizer.y: train_batch['Y'],
-                                                            self.model.is_training: True,
-                                                            self.optimizer.lr: current_lr})
+                        _, _, train_loss, preds = sess.run([self.optimizer.train_step, self.optimizer.train_op,
+                                                            self.optimizer.loss,
+                                                            self.model.normalized_output],
+                                                            feed_dict={self.model.input: train_batch['X'],
+                                                                       self.optimizer.y: train_batch['Y'],
+                                                                       self.model.is_training: True,
+                                                                       self.optimizer.lr: current_lr})
 
                         print('batch {} done. ({} chunks)'.format(batch_num + 1, train_batch['X'].shape[0]))
 
@@ -208,8 +219,10 @@ class Trainer(BaseTrainer):
             array_val_acc, array_val_loss = [], []
 
             while True:
+                track_preds = []
+                track_y = []
                 try:
-                    for batch_num, val_batch in enumerate(self._get_batch_generator(self.val_next_element)):
+                    for batch_num, val_batch in enumerate(self._get_batch_generator(self.val_next_element, mux_type='chain_mux')):
                         preds = sess.run([self.model.normalized_output],
                                          feed_dict={self.model.input: val_batch['X'],
                                                     self.model.is_training: False})
@@ -222,15 +235,21 @@ class Trainer(BaseTrainer):
                         print('batch {} ({} chunks) done'.format(batch_num + 1, val_batch['X'].shape[0]))
                         print('val loss : {}'.format(val_loss))
                         array_val_loss.append(val_loss)
-                        
-                        preds_argmax = np.argmax(np.array(preds[0]), axis=1)
-                        y_argmax = np.argmax(val_batch['Y'], axis=1)
 
-                        acc = accuracy_score(preds_argmax, y_argmax)
-
-                        array_val_acc.append(acc)
+                        track_preds.append(np.array(preds[0]))
+                        track_y.append(val_batch['Y'])
 
                 except tf.errors.OutOfRangeError:
+                    average_pred = np.mean(np.array(track_preds), axis=1)
+                    print(average_pred)
+                    preds_argmax = np.argmax(average_pred)
+
+                    assert (len(set(track_y))==1), 'Trainer: different labels found for chucks that should belong to  the same track'
+                    y_argmax = np.argmax(track_y[0], axis=1)
+
+                    acc = accuracy_score(preds_argmax, y_argmax)
+
+                    array_val_acc.append(acc)
                     break
                     
             #Keep track of average loss of the epoch
