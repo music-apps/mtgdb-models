@@ -103,7 +103,7 @@ def train_models(data_dir, exp_dir, tolerance=5, force=False, seed=None):
                 dataset_exp_dir, "{}.history".format(dataset))
             log_file = os.path.join(dataset_exp_dir, "{}.log".format(dataset))
             report_file = os.path.join(
-                dataset_exp_dir, "{}.report.csv".format(dataset))
+                dataset_exp_dir, "{}.report.tsv".format(dataset))
 
             log_str = '\n\n{}\nProcessing "{}"\n{}\n\n'.format(
                 '*' * 30, dataset, '*' * 30)
