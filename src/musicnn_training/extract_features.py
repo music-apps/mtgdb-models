@@ -5,6 +5,15 @@ from subprocess import call
 from argparse import ArgumentParser
 from path_config import DATASETS_DATA, DATASETS_GROUNDTRUTH, MTGDB_DIR, MUSICNN_DIR
 
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
+
+
+def audio_to_repr_path(audio_path, dataset):
+    audio_path = '.'.join(audio_path.split('.')[:-1]) + '.pk'
+    return 'audio_representation/{}__time-freq/{}'.format(dataset, audio_path)
+
 
 def extract_features(data_dir, exp_dir, profile=None,
                      skip_analyzed=True, store_frames=False, format='yaml'):
@@ -15,8 +24,8 @@ def extract_features(data_dir, exp_dir, profile=None,
         exp_out_dir = os.path.join(exp_dir, dataset)
 
         index_file = os.path.join(dataset_out_dir, 'index.tsv')
-        gt_train = os.path.join(exp_dir, dataset, 'gt_train.csv')
-        gt_val = os.path.join(exp_dir, dataset, 'gt_val.csv')
+        gt_train = os.path.join(dataset_out_dir, 'gt_train.csv')
+        gt_val = os.path.join(dataset_out_dir, 'gt_val.csv')
 
         os.makedirs(dataset_out_dir, exist_ok=True)
         os.makedirs(exp_out_dir, exist_ok=True)
@@ -29,10 +38,34 @@ def extract_features(data_dir, exp_dir, profile=None,
 
             groundtruth = yaml.load(open(groundtruth_input_file))
 
-            audio_paths = ['{:03d}\t{}'.format(idx, path) for idx, path in enumerate(groundtruth['groundTruth'].keys())]
+            paths = groundtruth['groundTruth'].keys()
+            labels = groundtruth['groundTruth'].values()
+            ids = list(range(len(labels)))
+
+            genres = np.array(list(set(groundtruth['groundTruth'].values())))
+            genres = genres.reshape(-1, 1)
+
+            enc = OneHotEncoder(handle_unknown='ignore')
+            enc.fit(genres)
+
+            labels = np.array(list(labels)).reshape(-1, 1)
+            gt_ohe = list(enc.transform(labels).toarray())
+
+            ids_train, ids_val = train_test_split(ids, stratify=gt_ohe)
+
+            gt_train_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_train]
+            gt_val_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_val]
+            audio_paths = ['ID{:04}\t{}'.format(idx, audio_to_repr_path(path, dataset))
+                           for idx, path in zip(ids, paths)]
 
             with open(index_file, 'w') as f:
                 f.write('\n'.join(audio_paths))
+
+            with open(gt_train, 'w') as f:
+                f.write('\n'.join(gt_train_list))
+
+            with open(gt_val, 'w') as f:
+                f.write('\n'.join(gt_val_list))
 
             config_file_template = open(os.path.join(MUSICNN_DIR, 'src', 'config_file_template.yaml')).read()
 
@@ -44,8 +77,9 @@ def extract_features(data_dir, exp_dir, profile=None,
                                                       'audio_folder': os.path.abspath(dataset_in_dir) + '/',
                                                       'identifier': dataset,
                                                       'index_file': 'index.tsv',
-                                                      'gt_train': os.path.abspath(gt_train),
-                                                      'gt_val': os.path.abspath(gt_val)
+                                                      'gt_train': gt_train,
+                                                      'gt_val': gt_val,
+                                                      'num_classes_dataset': len(genres)
                                                       }
 
             # write the project file
@@ -56,8 +90,18 @@ def extract_features(data_dir, exp_dir, profile=None,
             with open(config_file, 'w') as pfile:
                 pfile.write(configured_file)
 
-            script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
-            call(['python', script, 'mtgdb_spec'], cwd=os.path.dirname(script))
+            # Compute feaures
+            # script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
+            # call(['python', script, 'mtgdb_spec'], cwd=os.path.dirname(script))
+
+            # Train model
+            script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
+            call(['python', script, 'spec'], cwd=os.path.dirname(script))
+            # call(['CUDA_VISIBLE_DEVICES=0', 'python', script, 'spec'], cwd=os.path.dirname(script))
+
+            # Evaluate model
+            # script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
+            # call(['CUDA_VISIBLE_DEVICES=0', 'python', script, 'spec'], cwd=os.path.dirname(script))
 
 
 if __name__ == '__main__':
