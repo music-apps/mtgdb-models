@@ -13,7 +13,7 @@ from sklearn.model_selection import StratifiedKFold
 
 def audio_to_repr_path(audio_path, dataset):
     audio_path = '.'.join(audio_path.split('.')[:-1]) + '.pk'
-    return 'audio_representation/{}__time-freq/{}'.format(dataset, audio_path)
+    return '{}__time-freq/{}'.format(dataset, audio_path)
 
 
 def configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
