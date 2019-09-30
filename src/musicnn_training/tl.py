@@ -116,14 +116,16 @@ def run(args):
             audio_paths = ['ID{:04}\t{}'.format(idx, path)
                            for idx, path in zip(ids, paths)]
 
-            with open(index_audio_file, 'w') as f:
-                f.write('\n'.join(audio_paths))
+            if not os.path.exists(index_audio_file):
+                with open(index_audio_file, 'w') as f:
+                    f.write('\n'.join(audio_paths))
 
             audio_paths = ['ID{:04}\t{}'.format(idx, audio_to_repr_path(path, dataset))
                            for idx, path in zip(ids, paths)]
 
-            with open(index_repr_file, 'w') as f:
-                f.write('\n'.join(audio_paths))
+            if not os.path.exists(index_repr_file):
+                with open(index_repr_file, 'w') as f:
+                    f.write('\n'.join(audio_paths))
 
             skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
             for fold_idx, index in enumerate(skf.split(ids, labels)):
