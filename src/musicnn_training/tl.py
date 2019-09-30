@@ -156,7 +156,7 @@ def run(args):
 
                 # evaluate model
                 if evaluation:
-                    experiment_id_file = os.path.join(dataset_out_dir, 'experiment_id_{}'.format(fold_idx))
+                    experiment_id_file = os.path.join(exp_out_dir, 'experiment_id_{}'.format(fold_idx))
                     with open(experiment_id_file, 'r') as f:
                         experiment_id = f.read().rstrip()
 
