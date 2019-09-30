@@ -18,7 +18,8 @@ def audio_to_repr_path(audio_path, dataset):
 
 def configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                        ids_test_list, exp_out_dir, config_file_template, dataset,
-                       dataset_in_dir, genres, n_folds, model_dir):
+                       dataset_in_dir, genres, n_folds, model_dir, model_number,
+                       epochs):
     gt_train = os.path.join(dataset_out_dir, 'gt_train_{}.csv'.format(fold_idx))
     if not os.path.exists(gt_train):
         with open(gt_train, 'w') as f:
@@ -36,20 +37,22 @@ def configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
 
     config_file = os.path.join(MUSICNN_DIR, 'src', 'config_file.yaml')
     config_file_log = os.path.join(exp_out_dir, 'config_file_{}.yaml'.format(fold_idx))
-
     configured_file = config_file_template % {'dataset': dataset,
                                               'data_folder': os.path.abspath(dataset_out_dir) + '/',
+                                              'model_folder': os.path.abspath(exp_out_dir) + '/',
                                               'audio_folder': os.path.abspath(dataset_in_dir) + '/',
                                               'identifier': dataset,
                                               'index_audio_file': 'index_audio.tsv',
                                               'index_repr_file': 'index_repr.tsv',
+                                              'epochs': epochs,
                                               'gt_train': gt_train,
                                               'gt_val': gt_val,
                                               'gt_test': gt_test,
                                               'load_model': model_dir,
+                                              'model_number': model_number,
                                               'num_classes_dataset': len(genres),
                                               'n_folds': n_folds,
-                                              'fold': fold_idx,
+                                              'fold': fold_idx
                                               }
 
     # write the project file
@@ -72,8 +75,10 @@ def run(args):
     evaluation = args.evaluation
     seed = args.seed
     model_dir = args.model_dir
+    model_number = args.model_number
+    epochs = args.epochs
 
-    config_file_template = open(os.path.join(MUSICNN_DIR, 'src', 'config_tl_file_template.yaml')).read()
+    config_file_template = open(os.path.join(MUSICNN_DIR, 'src', 'config_file_template.yaml')).read()
 
     for dataset, data_paths in DATASETS_DATA.items():
         print('Processing "{}"'.format(dataset))
@@ -135,7 +140,7 @@ def run(args):
 
                 configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                    ids_test_list, exp_out_dir, config_file_template, dataset,
-                                   dataset_in_dir, genres, n_folds, model_dir)
+                                   dataset_in_dir, genres, n_folds, model_dir, model_number, epochs)
 
                 # compute feaures
                 if features:
@@ -144,13 +149,8 @@ def run(args):
 
                 # train model
                 if training:
-                    script = os.path.join(MUSICNN_DIR, 'src', 'train_tl.py')
+                    script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
                     call(['python', script, 'spec'], cwd=os.path.dirname(script))
-
-                    # if with_gpu:
-                    #     call(['CUDA_VISIBLE_DEVICES=0', 'python', script, 'spec'],
-                    #          cwd=os.path.dirname(script))
-                    # else:
 
                 # evaluate model
                 if evaluation:
@@ -158,13 +158,8 @@ def run(args):
                     with open(experiment_id_file, 'r') as f:
                         experiment_id = f.read().rstrip()
 
-                    script = os.path.join(MUSICNN_DIR, 'src', 'evaluate_tl.py')
+                    script = os.path.join(MUSICNN_DIR, 'src', 'evaluate.py')
                     call(['python', script, '-l', experiment_id], cwd=os.path.dirname(script))
-
-                    # if with_gpu:
-                    #     call(['CUDA_VISIBLE_DEVICES=0', 'python', script, '-l', experiment_id],
-                    #          cwd=os.path.dirname(script))
-                    # else:
 
             if evaluation:
                 script = os.path.join(MUSICNN_DIR, 'src', 'score_predictions.py')
@@ -179,16 +174,12 @@ def run(args):
 
             configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                [], exp_out_dir, config_file_template, dataset,
-                               dataset_in_dir, genres, n_folds, model_dir)
+                               dataset_in_dir, genres, n_folds, model_dir,
+                               epochs)
 
             if training:
-                script = os.path.join(MUSICNN_DIR, 'src', 'train_tl.py')
+                script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
                 call(['python', script, 'spec'], cwd=os.path.dirname(script))
-
-            # if with_gpu:
-            #     call(['CUDA_VISIBLE_DEVICES=0', 'python', script, 'spec'],
-            #          cwd=os.path.dirname(script))
-            # else:
 
 
 if __name__ == '__main__':
@@ -200,6 +191,10 @@ if __name__ == '__main__':
                                 help='Where to store training files.')
     argumentParser.add_argument('model_dir',
                                 help='Model dir.')
+    argumentParser.add_argument('model_number',
+                                help='Model number.')
+    argumentParser.add_argument('epochs',
+                                help='Number of epochs', type=int)
     argumentParser.add_argument('--skip_analyzed', '-s', action='store_true',
                                 help='Whether to skip already existing files.')
     argumentParser.add_argument('--n_folds', '-n', default=5, type=int,
