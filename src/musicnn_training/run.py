@@ -18,7 +18,8 @@ def audio_to_repr_path(audio_path, dataset):
 
 def configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                        ids_test_list, exp_out_dir, config_file_template, dataset,
-                       dataset_in_dir, genres, n_folds):
+                       dataset_in_dir, genres, n_folds, model_dir, model_number,
+                       epochs):
     gt_train = os.path.join(dataset_out_dir, 'gt_train_{}.csv'.format(fold_idx))
     if not os.path.exists(gt_train):
         with open(gt_train, 'w') as f:
@@ -44,9 +45,12 @@ def configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                               'identifier': dataset,
                                               'index_audio_file': 'index_audio.tsv',
                                               'index_repr_file': 'index_repr.tsv',
+                                              'epochs': epochs,
                                               'gt_train': gt_train,
                                               'gt_val': gt_val,
                                               'gt_test': gt_test,
+                                              'load_model': model_dir,
+                                              'model_number': model_number,
                                               'num_classes_dataset': len(genres),
                                               'n_folds': n_folds,
                                               'fold': fold_idx,
@@ -71,6 +75,8 @@ def run(args):
     training = args.training
     evaluation = args.evaluation
     seed = args.seed
+    model_number = args.model_number
+    epochs = args.epochs
 
     config_file_template = open(os.path.join(MUSICNN_DIR, 'src', 'config_file_template.yaml')).read()
 
@@ -136,7 +142,7 @@ def run(args):
 
                 configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                    ids_test_list, exp_out_dir, config_file_template, dataset,
-                                   dataset_in_dir, genres, n_folds)
+                                   dataset_in_dir, genres, n_folds, '', model_number, epochs)
 
                 # compute feaures
                 if features:
@@ -180,7 +186,8 @@ def run(args):
 
             configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                [], exp_out_dir, config_file_template, dataset,
-                               dataset_in_dir, genres, n_folds)
+                               dataset_in_dir, genres, n_folds, '', model_number,
+                               epochs)
 
             if training:
                 script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
@@ -199,6 +206,10 @@ if __name__ == '__main__':
                                 help='Where to store the .npy files.')
     argumentParser.add_argument('exp_dir',
                                 help='Where to store training files.')
+    argumentParser.add_argument('model_number',
+                                help='Model number. See models.')
+    argumentParser.add_argument('epochs', type=int,
+                                help='Number of epochs to train.')
     argumentParser.add_argument('--skip_analyzed', '-s', action='store_true',
                                 help='Whether to skip already existing files.')
     argumentParser.add_argument('--n_folds', '-n', default=5, type=int,
