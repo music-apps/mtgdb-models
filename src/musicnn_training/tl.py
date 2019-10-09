@@ -177,7 +177,7 @@ def run(args):
             configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
                                [], exp_out_dir, config_file_template, dataset,
                                dataset_in_dir, genres, n_folds, model_dir,
-                               epochs)
+                               model_number, epochs)
 
             if training:
                 script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
