@@ -3,12 +3,12 @@
 
 MTGDB_DIR = '/mnt/mtgdb-audio'
 
-MUSICNN_DIR = '/home/pablo/reps/musicnn-training'
+MUSICNN_DIR = '/home/palonso/reps/musicnn-training'
 
 DATASETS_DATA = {
     # 'ismir04_rhythm':     ['ismir04_rhythm/'],
-    'genre_dortmund':     ['genre_dortmund/'],
-    'genre_tzanetakis':   ['genre_tzanetakis/'],
+    'genre_dortmund':     ['genre_dortmund/audio/wav/'],
+    'genre_tzanetakis':   ['genre_tzanetakis/audio/mp3/'],
     # 'moods_mirex':        ['moods_mirex/'],
     # 'voice_instrumental': ['voice_instrumental/'],
     # 'tonal_atonal':       ['tonal_atonal/'],
