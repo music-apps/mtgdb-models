@@ -146,7 +146,11 @@ def run(args):
 
                 # compute feaures
                 if features:
-                    script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
+                    if model_number == '2':
+                        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
+                    elif model_number == '20':
+                        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_audioset.py')
+                    
                     call(['python', script, 'mtgdb_spec'], cwd=os.path.dirname(script))
 
                 # train model
