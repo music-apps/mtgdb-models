@@ -160,14 +160,16 @@ def predict(args):
 
                 predictions_file = os.path.join(exp_dir, dataset, '{}_predictions.json'.format(dataset_name))
 
+                repr_index_file = os.path.join(data_dir,'index.tsv')
+
                 script = os.path.join(MUSICNN_DIR, 'src', 'predict.py')
-                call(['python', script, index_file, model_fol, predictions_file,
+                call(['python', script, repr_index_file, model_fol, predictions_file,
                       '-l', model], cwd=os.path.dirname(script))
                 with open(predictions_file) as pf:
                     predictions = json.load(pf)
 
                 predicted_classes = {k: list(enc.inverse_transform(np.array(v).reshape(-1, 1).T)[0]) for k, v in predictions.items()}
-                predicted_classes_file = os.path.join(exp_dir, dataset, '{}_predicted_classes.json'.format(dataset_name))
+                predicted_classes_file = os.path.join(exp_dir, dataset, '{}_{}_predicted_classes.json'.format(dataset_name, dataset))
                 with open(predicted_classes_file, 'w') as pf:
                     json.dump(predicted_classes, pf)
 
