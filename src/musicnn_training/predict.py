@@ -95,7 +95,7 @@ def predict(args):
     config_file_template = open(os.path.join(MUSICNN_DIR, 'src', 'config_file_template.yaml')).read()
 
     if features:
-        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_crosseval_essentia.py')
+        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_crosseval.py')
         call(['python', script, index_file, index_basedir, data_dir, lib],
              cwd=os.path.dirname(script))
 
@@ -122,34 +122,6 @@ def predict(args):
 
             enc = OneHotEncoder(handle_unknown='ignore')
             enc.fit(genres)
-
-            # load groundtruth_crosseval
-            # with open(groundtruth_file) as f:
-            #     ids = []
-            #     labels = []
-            #     for line in f.readlines():
-            #         line = line.rstrip().split('\t')
-
-            #         ids.append(line[0])
-            #         labels.append(eval(line[1])[0])
-
-            # if dataset == 'genre_rosamerica':
-            #     labels = list(map(rosamerica_map, labels))
-
-            # elif dataset == 'genre_dortmund':
-            #     labels = list(map(dortmund_map, labels))
-
-            # elif dataset == 'genre_tzanetakis':
-            #     labels = list(map(tzanetakis_map, labels))
-            # else:
-            #     raise('dataset not available')
-
-            # labels = np.array(labels)
-            # labels = list(enc.transform(labels.reshape(-1, 1)).toarray())
-
-            # groundtruth_out = ['{}\t{}'.format(id, list(label)) for id, label in zip(ids, labels)]
-            # with open(groundtruth_out_file, 'w') as f:
-            #     f.write('\n'.join(groundtruth_out))
 
             if evaluation:
                 # call training script
@@ -189,7 +161,7 @@ if __name__ == '__main__':
                              'follwing the architecture after index basedir.')
     parser.add_argument('dataset_name',
                         help='Dataset name for the predicitons file.')
-    parser.add_argument('lib', choices=['essentia', 'librosa'],
+    parser.add_argument('lib', choices=['essentia', 'librosa', 'audioset'],
                         help='dsp lib')
     parser.add_argument('--skip_analyzed', '-s', action='store_true',
                         help='Whether to skip already existing files.')
