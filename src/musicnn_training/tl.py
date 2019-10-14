@@ -92,100 +92,109 @@ def run(args):
         os.makedirs(dataset_out_dir, exist_ok=True)
         os.makedirs(exp_out_dir, exist_ok=True)
 
-        for audio_path in data_paths:
-            dataset_in_dir = os.path.join(MTGDB_DIR, 'stable', audio_path)
+        # TODO: Only one data path. Shouldn't be a list. Mantaining
+        # for consistency with the rest of scripts.
+        audio_path = data_paths[0]
 
-            groundtruth_input_file = os.path.join(
-                MTGDB_DIR, 'stable', DATASETS_GROUNDTRUTH[dataset])
+        dataset_in_dir = os.path.join(MTGDB_DIR, 'stable', audio_path)
 
-            groundtruth = yaml.load(open(groundtruth_input_file), Loader=yaml.SafeLoader)
+        groundtruth_input_file = os.path.join(
+            MTGDB_DIR, 'stable', DATASETS_GROUNDTRUTH[dataset])
 
-            paths = groundtruth['groundTruth'].keys()
-            labels = groundtruth['groundTruth'].values()
-            ids = list(range(len(labels)))
+        groundtruth = yaml.load(open(groundtruth_input_file), Loader=yaml.SafeLoader)['groundTruth']
 
-            genres = np.array(list(set(groundtruth['groundTruth'].values())))
-            genres = genres.reshape(-1, 1)
+        # clean empty files in the ground truth
+        clean_groundtruth = {path: gt for path, gt in groundtruth.items() if os.stat(os.path.join(MTGDB_DIR, 'stable', audio_path, path)).st_size != 0}
+        removed_keys = set(groundtruth.keys()) - set(clean_groundtruth.keys())
+        print('{} empty files found removed\n {}'.format(len(removed_keys), removed_keys))
+        groundtruth = clean_groundtruth
 
-            enc = OneHotEncoder(handle_unknown='ignore')
-            enc.fit(genres)
+        paths = groundtruth.keys()
+        labels = groundtruth.values()
+        ids = list(range(len(labels)))
 
-            labels = np.array(list(labels))
-            gt_ohe = enc.transform(labels.reshape(-1, 1)).toarray()
+        genres = np.array(list(set(labels)))
+        genres = genres.reshape(-1, 1)
 
-            audio_paths = ['ID{:04}\t{}'.format(idx, path)
-                           for idx, path in zip(ids, paths)]
+        enc = OneHotEncoder(handle_unknown='ignore')
+        enc.fit(genres)
 
-            if not os.path.exists(index_audio_file):
-                with open(index_audio_file, 'w') as f:
-                    f.write('\n'.join(audio_paths))
+        labels = np.array(list(labels))
+        gt_ohe = enc.transform(labels.reshape(-1, 1)).toarray()
 
-            audio_paths = ['ID{:04}\t{}'.format(idx, audio_to_repr_path(path, dataset))
-                           for idx, path in zip(ids, paths)]
+        audio_paths = ['ID{:04}\t{}'.format(idx, path)
+                        for idx, path in zip(ids, paths)]
 
-            if not os.path.exists(index_repr_file):
-                with open(index_repr_file, 'w') as f:
-                    f.write('\n'.join(audio_paths))
+        if not os.path.exists(index_audio_file):
+            with open(index_audio_file, 'w') as f:
+                f.write('\n'.join(audio_paths))
 
-            skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
-            for fold_idx, index in enumerate(skf.split(ids, labels)):
-                ids_train_val, ids_test = index
+        audio_paths = ['ID{:04}\t{}'.format(idx, audio_to_repr_path(path, dataset))
+                        for idx, path in zip(ids, paths)]
 
-                gt_ohe_train_val = gt_ohe[ids_train_val]
+        if not os.path.exists(index_repr_file):
+            with open(index_repr_file, 'w') as f:
+                f.write('\n'.join(audio_paths))
 
-                ids_train, ids_val = train_test_split(ids_train_val, stratify=gt_ohe_train_val,
-                                                      random_state=seed, test_size=.15)
+        skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+        for fold_idx, index in enumerate(skf.split(ids, labels)):
+            ids_train_val, ids_test = index
 
-                gt_train_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_train]
-                gt_val_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_val]
-                ids_test_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_test]
+            gt_ohe_train_val = gt_ohe[ids_train_val]
 
-                configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
-                                   ids_test_list, exp_out_dir, config_file_template, dataset,
-                                   dataset_in_dir, genres, n_folds, model_dir, model_number, epochs)
+            ids_train, ids_val = train_test_split(ids_train_val, stratify=gt_ohe_train_val,
+                                                    random_state=seed, test_size=.15)
 
-                # compute feaures
-                if features:
-                    if model_number == '2':
-                        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
-                    elif model_number == '20':
-                        script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_audioset.py')
-                    
-                    call(['python', script, 'mtgdb_spec'], cwd=os.path.dirname(script))
-
-                # train model
-                if training:
-                    script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
-                    call(['python', script, 'spec'], cwd=os.path.dirname(script))
-
-                # evaluate model
-                if evaluation:
-                    experiment_id_file = os.path.join(exp_out_dir, 'experiment_id_{}'.format(fold_idx))
-                    with open(experiment_id_file, 'r') as f:
-                        experiment_id = f.read().rstrip()
-
-                    script = os.path.join(MUSICNN_DIR, 'src', 'evaluate.py')
-                    call(['python', script, '-l', experiment_id], cwd=os.path.dirname(script))
-
-            if evaluation:
-                script = os.path.join(MUSICNN_DIR, 'src', 'score_predictions.py')
-                call(['python', script], cwd=os.path.dirname(script))
-
-            # train whole model
-            fold_idx = 'whole'
-
-            ids_train, ids_val = train_test_split(ids, stratify=gt_ohe)
             gt_train_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_train]
             gt_val_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_val]
+            ids_test_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_test]
 
             configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
-                               [], exp_out_dir, config_file_template, dataset,
-                               dataset_in_dir, genres, n_folds, model_dir,
-                               model_number, epochs)
+                                ids_test_list, exp_out_dir, config_file_template, dataset,
+                                dataset_in_dir, genres, n_folds, model_dir, model_number, epochs)
 
+            # compute feaures
+            if features:
+                if model_number == '2':
+                    script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_librosa.py')
+                elif model_number == '20':
+                    script = os.path.join(MUSICNN_DIR, 'src', 'preprocess_audioset.py')
+                
+                call(['python', script, 'mtgdb_spec'], cwd=os.path.dirname(script))
+
+            # train model
             if training:
                 script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
                 call(['python', script, 'spec'], cwd=os.path.dirname(script))
+
+            # evaluate model
+            if evaluation:
+                experiment_id_file = os.path.join(exp_out_dir, 'experiment_id_{}'.format(fold_idx))
+                with open(experiment_id_file, 'r') as f:
+                    experiment_id = f.read().rstrip()
+
+                script = os.path.join(MUSICNN_DIR, 'src', 'evaluate.py')
+                call(['python', script, '-l', experiment_id], cwd=os.path.dirname(script))
+
+        if evaluation:
+            script = os.path.join(MUSICNN_DIR, 'src', 'score_predictions.py')
+            call(['python', script], cwd=os.path.dirname(script))
+
+        # train whole model
+        fold_idx = 'whole'
+
+        ids_train, ids_val = train_test_split(ids, stratify=gt_ohe)
+        gt_train_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_train]
+        gt_val_list = ['ID{:04}\t{}'.format(idx, list(gt_ohe[idx])) for idx in ids_val]
+
+        configure_training(dataset_out_dir, fold_idx, gt_train_list, gt_val_list,
+                            [], exp_out_dir, config_file_template, dataset,
+                            dataset_in_dir, genres, n_folds, model_dir,
+                            model_number, epochs)
+
+        if training:
+            script = os.path.join(MUSICNN_DIR, 'src', 'train.py')
+            call(['python', script, 'spec'], cwd=os.path.dirname(script))
 
 
 if __name__ == '__main__':
